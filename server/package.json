@@ -1,0 +1,36 @@
+{
+  "name": "meridian-server",
+  "version": "1.0.0",
+  "description": "Meridian — Express/LangChain API server",
+  "private": true,
+  "main": "server.ts",
+  "scripts": {
+    "dev":        "tsx --tsconfig tsconfig.json server.ts",
+    "start":      "node dist/server.js",
+    "build":      "tsc",
+    "seed":       "tsx --tsconfig tsconfig.json scripts/seed.ts",
+    "test":       "vitest run",
+    "test:watch": "vitest",
+    "coverage":   "vitest run --coverage"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1.40",
+    "@langchain/google-genai": "^2.1.27",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2",
+    "langchain": "^1.3.3",
+    "mongoose": "^9.4.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "tsx": "^4.19.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
+  }
+}

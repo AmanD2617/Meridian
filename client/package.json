@@ -1,0 +1,14 @@
+{
+  "name": "meridian-client",
+  "version": "1.0.0",
+  "description": "Meridian — React frontend (CDN React + browser Babel)",
+  "private": true,
+  "scripts": {
+    "dev":     "vite --port 3000",
+    "build":   "vite build",
+    "preview": "vite preview --port 3000"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}
