@@ -4,12 +4,13 @@
 
 function Sidebar({ activeView, onView }) {
   const items = [
-    { id: "overview",  label: "Overview",        icon: "Gauge",  active: true },
-    { id: "shipments", label: "Shipments",       icon: "Ship",   count: "2,847" },
-    { id: "alerts",    label: "Risk Alerts",     icon: "Alert",  count: 23, tone: "alert" },
-    { id: "agents",    label: "Agent Activity",  icon: "Brain",  count: "LIVE", tone: "warn" },
-    { id: "routes",    label: "Route Planner",   icon: "Route" },
-    { id: "fleet",     label: "Fleet",           icon: "Truck" },
+    { id: "overview",   label: "Overview",        icon: "Gauge",  active: true },
+    { id: "globalmap",  label: "Global Map",      icon: "Globe",  count: "LIVE", tone: "ok" },
+    { id: "shipments",  label: "Shipments",       icon: "Ship",   count: "2,847" },
+    { id: "alerts",     label: "Risk Alerts",     icon: "Alert",  count: 23, tone: "alert" },
+    { id: "agents",     label: "Agent Activity",  icon: "Brain",  count: "LIVE", tone: "warn" },
+    { id: "routes",     label: "Route Planner",   icon: "Route" },
+    { id: "fleet",      label: "Fleet",           icon: "Truck" },
   ];
   const second = [
     { id: "analytics", label: "Analytics", icon: "Graph" },
@@ -76,7 +77,7 @@ function ScopeSelector({ scope, onChange }) {
   );
 }
 
-function Topbar({ onSimulate, simActive, scope, onScopeChange }) {
+function Topbar({ onSimulate, simActive, scope, onScopeChange, theme, onToggleTheme }) {
   const scopeLabel = {
     global: "Global",
     country: "Country",
@@ -117,6 +118,14 @@ function Topbar({ onSimulate, simActive, scope, onScopeChange }) {
       </div>
       <button className="btn ghost" title="Notifications" style={{padding: "6px 8px"}}>
         <Icons.Bell size={14}/>
+      </button>
+      <button
+        className="btn ghost theme-toggle"
+        onClick={onToggleTheme}
+        title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+        style={{padding: "6px 8px"}}
+      >
+        {theme === "light" ? <Icons.Moon size={14}/> : <Icons.Sun size={14}/>}
       </button>
       <button className={"btn " + (simActive ? "danger" : "primary")} onClick={onSimulate}>
         {simActive ? <><Icons.Pause size={13}/> Pause simulation</> : <><Icons.Play size={13}/> Simulate disruption</>}

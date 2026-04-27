@@ -72,7 +72,11 @@ function formatUtcHeader(date) {
 }
 
 function App() {
-  const [tweaks, setTweaks]             = React.useState(window.__TWEAKS__);
+  const [tweaks, setTweaks]             = React.useState(() => {
+    // Merge any persisted theme preference over the compiled defaults
+    const savedTheme = localStorage.getItem("meridian-theme");
+    return { ...window.__TWEAKS__, ...(savedTheme ? { theme: savedTheme } : {}) };
+  });
   const [tweaksOpen, setTweaksOpen]     = React.useState(false);
   const [selectedId, setSelectedId]     = React.useState("MRD-48271");
   const [filter, setFilter]             = React.useState("all");
@@ -120,14 +124,20 @@ function App() {
 
   React.useEffect(() => () => clearSimulationSteps(), [clearSimulationSteps]);
 
-  // ── Theme / density ──────────────────────────────────────────
+  // ── Theme / density — apply to <html> + persist choice ──────
   React.useEffect(() => {
     const root = document.documentElement;
     root.setAttribute("data-theme",     tweaks.theme);
     root.setAttribute("data-accent",    tweaks.accent);
     root.setAttribute("data-density",   tweaks.density);
     root.setAttribute("data-show-grid", tweaks.showGrid);
+    localStorage.setItem("meridian-theme", tweaks.theme);
   }, [tweaks]);
+
+  // ── Theme toggle helper ──────────────────────────────────────
+  const toggleTheme = React.useCallback(() => {
+    setTweaks(t => ({ ...t, theme: t.theme === "light" ? "dark" : "light" }));
+  }, []);
 
   // ── Edit-mode postMessage protocol ──────────────────────────
   React.useEffect(() => {
@@ -207,42 +217,15 @@ function App() {
     loadInitial();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── SSE subscription (replaces 30s polling) ──────────────────
+  // ── Polling (10s) — keeps all clients in sync ────────────────
   React.useEffect(() => {
-    let pollInterval = null;
-    let es = null;
-
-    // SSE handler: re-fetch map state when the server pushes an event
-    async function handleSseEvent() {
+    const id = setInterval(async () => {
       try {
         const data = await window.MeridianAPI.getMapState();
         applyLiveData(data);
-      } catch (err) {
-        console.warn("[Meridian] SSE-triggered refresh failed:", err.message);
-      }
-    }
-
-    try {
-      es = window.MeridianAPI.subscribeToEvents({
-        "simulation:complete": handleSseEvent,
-        "reroute:executed":    handleSseEvent,
-        "reroute:rejected":    handleSseEvent,
-      });
-    } catch {
-      // EventSource not supported — fall back to polling
-      console.warn("[Meridian] SSE unavailable — falling back to 30s polling");
-      pollInterval = setInterval(async () => {
-        try {
-          const data = await window.MeridianAPI.getMapState();
-          applyLiveData(data);
-        } catch { /* offline — silent */ }
-      }, 30_000);
-    }
-
-    return () => {
-      if (es)           es.close();
-      if (pollInterval) clearInterval(pollInterval);
-    };
+      } catch { /* offline — silent */ }
+    }, 10_000);
+    return () => clearInterval(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Static fallback demo ─────────────────────────────────────
@@ -310,6 +293,7 @@ function App() {
       return;
     }
     setSimActive(true);
+    const startTime = Date.now();
     startSimulationFlow();
 
     try {
@@ -337,6 +321,11 @@ function App() {
 
       setSimBanner(true);
       setRefreshKey(k => k + 1);
+
+      // Advance to "Reroute applied" (step 3), ensuring step 2 has been
+      // visible for at least a moment — fire at ~t=2200ms from click.
+      const elapsed = Date.now() - startTime;
+      setTimeout(finishSimulationFlow, Math.max(200, 2200 - elapsed));
 
     } catch (err) {
       console.warn("[Meridian] POST /api/simulate failed — running demo:", err.message);
@@ -408,7 +397,8 @@ function App() {
     setDrawerId(id);
   };
 
-  const isAgents = view === "agents";
+  const isAgents    = view === "agents";
+  const isGlobalMap = view === "globalmap";
 
   // Derive scope-filtered shipments
   const activeEntry      = entries.find(e => e.status === "active");
@@ -428,7 +418,7 @@ function App() {
   });
 
   return (
-    <div className="app" data-screen-label={isAgents ? "03 Agent Activity" : "01 Operations Dashboard"}>
+    <div className="app" data-screen-label={isAgents ? "03 Agent Activity" : isGlobalMap ? "02 Global Map" : "01 Operations Dashboard"}>
       <Sidebar activeView={view} onView={setView}/>
 
       {isAgents ? (
@@ -458,6 +448,14 @@ function App() {
               <input placeholder="Filter by agent, shipment, decision…"/>
               <kbd>⌘K</kbd>
             </div>
+            <button
+              className="btn ghost theme-toggle"
+              onClick={toggleTheme}
+              title={tweaks.theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              style={{padding:"6px 8px"}}
+            >
+              {tweaks.theme === "light" ? <Icons.Moon size={14}/> : <Icons.Sun size={14}/>}
+            </button>
             <button className="btn" onClick={() => setView("overview")}>
               <Icons.Map size={13}/> Back to Map
             </button>
@@ -467,9 +465,14 @@ function App() {
             <AgentActivityView kpis={kpis}/>
           </div>
         </>
+      ) : isGlobalMap ? (
+        <>
+          <Topbar onSimulate={simulate} simActive={simActive} scope={scope} onScopeChange={setScope} theme={tweaks.theme} onToggleTheme={toggleTheme}/>
+          <GlobalMapView onBack={() => setView("overview")}/>
+        </>
       ) : (
         <>
-          <Topbar onSimulate={simulate} simActive={simActive} scope={scope} onScopeChange={setScope}/>
+          <Topbar onSimulate={simulate} simActive={simActive} scope={scope} onScopeChange={setScope} theme={tweaks.theme} onToggleTheme={toggleTheme}/>
           <div className="main">
 
             <AIActionBanner entry={latestActionEntry}/>
@@ -492,45 +495,19 @@ function App() {
               </div>
             )}
 
-            <div className="main-head">
-              <div className="breadcrumb">
-                <span>Operations</span><span className="sep">/</span>
-                <span>Live Map</span><span className="sep">/</span>
-                <span className="active">Global</span>
-              </div>
-              <div style={{display:"flex", alignItems:"center", gap: 12}}>
-                <div className="tabs">
-                  <button className="tab" data-active="true">Map</button>
-                  <button className="tab">Lanes</button>
-                  <button className="tab">Timeline</button>
-                  <button className="tab">Heatmap</button>
-                </div>
-                <div className="tooltip-chip">
-                  <span style={{background:"var(--ok)", width:6, height:6, borderRadius:"50%"}}/>
-                  {" "}Syncing · 12ms
-                </div>
-              </div>
-            </div>
-
-            <WorldMap
+            {/* ============================================================
+                REDESIGNED OVERVIEW DASHBOARD
+                Defined in dashboard.jsx, exposed on window.Dashboard.
+                ============================================================ */}
+            <Dashboard
               shipments={visibleShipments}
               selectedId={selectedId}
-              onSelect={openDrawer}
-              simulatedReroute={simReroute}
-              refreshKey={refreshKey}
-            />
-
-            <StatsStrip simActive={simActive} kpis={kpis}/>
-
-            <ShipmentsDrawer
-              shipments={visibleShipments}
-              selectedId={selectedId}
-              onSelect={openDrawer}
-              filter={filter}
-              onFilter={setFilter}
-              transportType={transportType}
-              onTransportTypeChange={setTransportType}
-              refreshKey={refreshKey}
+              onSelectShipment={openDrawer}
+              onExpandMap={() => setView("overview")}
+              onSimulate={simulate}
+              onViewImpact={() => setView("alerts")}
+              entries={entries}
+              kpis={kpis}
             />
           </div>
 

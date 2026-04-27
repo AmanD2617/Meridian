@@ -19,9 +19,9 @@ import { Request, Response } from 'express';
 import mongoose               from 'mongoose';
 
 import Shipment,        { IShipment }        from '../models/Shipment';
-import RiskAlert,       { IRiskAlert }        from '../models/RiskAlert';
+import RiskAlert                              from '../models/RiskAlert';
 import OptimizationLog, { IOptimizationLog } from '../models/OptimizationLog';
-import { evaluateReroute, OrchestratorError } from '../services/OrchestratorAgent';
+import type { OrchestratorOutput }             from '../services/OrchestratorAgent';
 import { nextSequence }                        from '../models/Counter';
 import { sseEmit }                             from '../services/SseService';
 
@@ -192,9 +192,90 @@ const SCENARIOS: SimulationScenario[] = [
 ];
 
 /** Pick scenario by rotation — round-robins through the list */
-async function pickScenario(): Promise<SimulationScenario> {
+async function pickScenario(): Promise<{ scenario: SimulationScenario; idx: number }> {
   const total = await OptimizationLog.countDocuments({});
-  return SCENARIOS[total % SCENARIOS.length];
+  const idx = total % SCENARIOS.length;
+  return { scenario: SCENARIOS[idx], idx };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Pre-seeded decision builder (replaces live Gemini calls)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Returns a fully-formed OrchestratorOutput for the given scenario
+ * without making any external API call. Routes are geographic detours
+ * that bypass each scenario's hazard polygon.
+ * All decisions have confidence ≥ 0.85 → AUTO_APPROVED.
+ */
+function buildPreseededDecision(
+  scenarioIdx: number,
+  shipment: IShipment,
+): OrchestratorOutput {
+  const [oLon, oLat] = shipment.origin.coordinates as [number, number];
+  const [dLon, dLat] = shipment.destination.coordinates as [number, number];
+
+  // Intermediate waypoints chosen to bypass each scenario's hazard polygon
+  const DETOUR_WAYPOINTS: [number, number][][] = [
+    // 0 — North Pacific Typhoon (35°N–50°N, 145°W–175°W): route south of 30°N
+    [[135, 28], [-170, 18], [-140, 22]],
+    // 1 — Arabian Sea Cyclone (6°N–23°N, 54°E–72°E): route north of 28°N
+    [[50, 30], [65, 30], [72, 27]],
+    // 2 — South China Sea Closure (10°N–22°N, 110°E–122°E): route east of 124°E
+    [[107, 5], [125, 14], [122, 25]],
+    // 3 — Indian Ocean Storm (2°N–18°N, 70°E–92°E): route south via Maldives
+    [[80, -2], [65, -8], [50, 10]],
+  ];
+
+  const ALTERNATES = [
+    'ALT-A (southern arc via HNL)',
+    'ALT-B (northern corridor via IST)',
+    'ALT-C (eastern passage via Luzon Strait)',
+    'ALT-A (Maldives southern corridor)',
+  ];
+
+  const REASONINGS = [
+    'Typhoon forces northern lanes to close within 8 hours. Southern detour adds 2 h 42 m but avoids Category-3 conditions that would delay cargo by an estimated 36–48 h. Fuel cost delta +3.2 % is far below the spoilage risk premium for this cargo class.',
+    'Category-4 cyclone on the direct corridor has cold-chain breach probability 0.94. Northern arc via Istanbul avoids the hazard entirely, adding 2 h 30 m versus a likely 20 h+ delay if the direct route is maintained.',
+    'Restricted zone blocks the South China Sea corridor until diplomatic clearance. Eastern passage via Luzon Strait adds 4 h but maintains service continuity without regulatory exposure.',
+    'Storm front raises wave heights to 8–11 m on the direct lane south of Sri Lanka. Maldives corridor reduces wave exposure to under 3 m, adding 2 h 30 m with minimal fuel overhead.',
+  ];
+
+  interface ScenarioMetrics {
+    originalETA_h: number;
+    proposedETA_h: number;
+    timeSavedMinutes: number;
+    spoilageAvoided_usd: number;
+    fuelDeltaPct: number;
+  }
+
+  const METRICS: ScenarioMetrics[] = [
+    { originalETA_h: 18.5, proposedETA_h: 21.2, timeSavedMinutes: 162,  spoilageAvoided_usd: 12500, fuelDeltaPct: 3.2 },
+    { originalETA_h: 14.0, proposedETA_h: 16.5, timeSavedMinutes: 150,  spoilageAvoided_usd: 28000, fuelDeltaPct: 4.1 },
+    { originalETA_h: 22.0, proposedETA_h: 26.0, timeSavedMinutes: 240,  spoilageAvoided_usd: 0,     fuelDeltaPct: 5.8 },
+    { originalETA_h: 16.0, proposedETA_h: 18.5, timeSavedMinutes: 150,  spoilageAvoided_usd: 8500,  fuelDeltaPct: 2.4 },
+  ];
+
+  const i        = scenarioIdx % 4;
+  const m        = METRICS[i];
+  const waypts   = DETOUR_WAYPOINTS[i];
+
+  return {
+    selectedAlternate:   ALTERNATES[i],
+    confidenceScore:     0.87 + i * 0.03,   // 0.87 / 0.90 / 0.93 / 0.96 — all ≥ 0.85
+    aiReasoning:         REASONINGS[i],
+    proposedRoute: {
+      type:        'LineString',
+      coordinates: [[oLon, oLat], ...waypts, [dLon, dLat]],
+    },
+    originalETA_h:       m.originalETA_h,
+    proposedETA_h:       m.proposedETA_h,
+    timeSavedMinutes:    m.timeSavedMinutes,
+    spoilageAvoided_usd: m.spoilageAvoided_usd,
+    fuelDeltaPct:        m.fuelDeltaPct,
+    action:              'AUTO_APPROVED',
+    haltRequired:        false,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -323,7 +404,7 @@ export async function triggerSimulation(
 
   try {
     // ── Step 1: Pick this simulation's hazard scenario ────
-    const scenario = await pickScenario();
+    const { scenario, idx: scenarioIdx } = await pickScenario();
 
     // ── Step 2: Clean up previous simulation alerts ───────
     // Mark any previously-simulated alerts as inactive so the
@@ -379,19 +460,8 @@ export async function triggerSimulation(
     targetShipment.status = 'risk';
     await targetShipment.save({ session });
 
-    // ── Step 6: Call the Orchestrator Agent ───────────────
-    let decision;
-    try {
-      decision = await evaluateReroute(targetShipment, newAlert as IRiskAlert);
-    } catch (agentErr) {
-      await session.abortTransaction();
-      const msg = agentErr instanceof OrchestratorError
-        ? `${agentErr.message} | Primary: ${agentErr.primaryError.message}`
-        : String(agentErr);
-      console.error('[triggerSimulation] OrchestratorAgent failed:', msg);
-      failure(res, 'AI agent failed to produce a rerouting decision', 502, msg);
-      return;
-    }
+    // ── Step 6: Build pre-seeded rerouting decision ───────
+    const decision = buildPreseededDecision(scenarioIdx, targetShipment);
 
     // ── Step 7: Map Gemini output → OptimizationLog ───────
     const newOptId  = await nextOptId();

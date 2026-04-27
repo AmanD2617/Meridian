@@ -1,0 +1,95 @@
+import type { RiskAlert } from '@/lib/types';
+
+export const ALERTS: RiskAlert[] = [
+  {
+    id: 'HZ-218',
+    source: 'Weather',
+    severity: 'Critical',
+    title: 'Cyclone Arwen — Arabian Sea',
+    description:
+      'Category 4 cyclone with sustained 120kt winds. Forecast track intersects the FRA→BOM and DXB→BOM corridors. Cold-chain breach probability 0.94.',
+    region: 'Arabian Sea · 54–72°E',
+    affects: ['MRD-48271', 'MRD-48170'],
+    raisedAt: new Date(Date.now() - 0.7 * 3_600_000).toISOString(),
+    clearsAt: new Date(Date.now() + 20 * 3_600_000).toISOString(),
+    active: true,
+  },
+  {
+    id: 'HZ-215',
+    source: 'Weather',
+    severity: 'High',
+    title: 'Typhoon Meridian-2301 — North Pacific',
+    description:
+      'Rapidly intensifying typhoon crossing the 40°N band. Category 3 at 105kt. Trans-Pacific shipping corridors affected in 8–12h.',
+    region: 'North Pacific · 145–175°W',
+    affects: ['MRD-48265'],
+    raisedAt: new Date(Date.now() - 3.5 * 3_600_000).toISOString(),
+    clearsAt: new Date(Date.now() + 36 * 3_600_000).toISOString(),
+    active: true,
+  },
+  {
+    id: 'HZ-212',
+    source: 'Geopolitical',
+    severity: 'High',
+    title: 'South China Sea — Restricted zone declared',
+    description:
+      'Maritime authority declared a temporary restricted zone covering 10–22°N, 110–122°E. All commercial vessels must reroute via Luzon Strait.',
+    region: 'South China Sea',
+    affects: ['MRD-48199'],
+    raisedAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
+    clearsAt: new Date(Date.now() + 24 * 3_600_000).toISOString(),
+    active: true,
+  },
+  {
+    id: 'HZ-209',
+    source: 'Traffic',
+    severity: 'Medium',
+    title: 'A3 autobahn — multi-vehicle incident',
+    description:
+      'Three-lane closure near Würzburg. Expected clearance 4–6h. FRA→IST road corridor delayed.',
+    region: 'Germany · A3',
+    affects: ['MRD-48238'],
+    raisedAt: new Date(Date.now() - 1.2 * 3_600_000).toISOString(),
+    clearsAt: new Date(Date.now() + 4 * 3_600_000).toISOString(),
+    active: true,
+  },
+  {
+    id: 'HZ-204',
+    source: 'Port',
+    severity: 'Medium',
+    title: 'Port of Rotterdam — berth congestion',
+    description:
+      'Terminal APM-II reporting 18h dwell time due to labour action. Outbound bulk carriers delayed.',
+    region: 'Rotterdam · NL',
+    affects: ['MRD-48221'],
+    raisedAt: new Date(Date.now() - 12 * 3_600_000).toISOString(),
+    clearsAt: null,
+    active: true,
+  },
+  {
+    id: 'HZ-198',
+    source: 'Weather',
+    severity: 'Low',
+    title: 'Fog advisory — Heathrow',
+    description:
+      'Visibility 350m with slow improvement. Expected 2h approach delays for LHR-bound flights.',
+    region: 'London · LHR',
+    affects: ['MRD-48210'],
+    raisedAt: new Date(Date.now() - 0.3 * 3_600_000).toISOString(),
+    clearsAt: new Date(Date.now() + 2.5 * 3_600_000).toISOString(),
+    active: true,
+  },
+  {
+    id: 'HZ-193',
+    source: 'Fleet',
+    severity: 'Low',
+    title: 'Vehicle maintenance — VEH-118 due',
+    description:
+      'Predictive maintenance model flagged VEH-118 at 94% of service interval. Schedule within 72h.',
+    region: 'Fleet · Mumbai hub',
+    affects: [],
+    raisedAt: new Date(Date.now() - 24 * 3_600_000).toISOString(),
+    clearsAt: null,
+    active: false,
+  },
+];
